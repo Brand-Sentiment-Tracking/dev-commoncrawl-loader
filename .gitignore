@@ -1,7 +1,11 @@
+# Remove caching/folder configs
 __pycache__
+.DS_Store
 
+# Removed any compressed files
 *.gz
 
+# Remove all records
 *.warc
 *.wat
 *.wet

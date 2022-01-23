@@ -89,7 +89,8 @@ class CommonCrawlRecord:
 
         if os.path.isfile(filepath):
             commit = input(f"'{filepath}' is already a file. Overwrite? [y/n]: ")
-            if commit == 'n': return
+            
+            if commit != 'y': return
 
         with open(filepath, 'wb') as f:
             f.write(record_data)

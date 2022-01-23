@@ -120,15 +120,26 @@ class CommonCrawlRecordLoader:
 
         return byte_start, byte_end
 
-    def __download_header(self, byte_index):
-        start, end = byte_index
-        return {"Range": f"bytes={start}-{end}"}
+    def __download_header(self, byte_index, format):
+        headers = dict()
+        
+        if format == 'warc':
+            start, end = byte_index
+            headers.update({"Range": f"bytes={start}-{end}"})
+        
+        return headers
 
     def download_record(self, record, format='warc'):
         byte_index = self.__get_byte_index(record)
-        headers = self.__download_header(byte_index)
+        headers = self.__download_header(byte_index, format)
 
-        record_cc_path = record["filename"].replace("warc", format)
+        if format != 'warc':
+            record_cc_path = record["filename"] \
+                .replace(".warc", f".warc.{format}") \
+                .replace("/warc/", f"/{format}/")
+        else:
+            record_cc_path = record["filename"]
+
         record_cc_url = urljoin(self.cc_server_url, record_cc_path)
 
         response = requests.get(record_cc_url, headers=headers)
@@ -137,7 +148,7 @@ class CommonCrawlRecordLoader:
             self.__last_download = CommonCrawlRecord(
                 format, record["url"], record_cc_url, response.content)
         else:
-            logging.warn(f"Failed to download record from '{record_cc_url}'")
+            logging.warn(f"Failed to download record from '{record_cc_url}' (status code {response.status_code}).")
             self.__last_download = CommonCrawlRecord(
                 format, record["url"], record_cc_url, None)
 
