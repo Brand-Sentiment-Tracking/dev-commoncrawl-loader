@@ -6,6 +6,6 @@ __pycache__
 *.gz
 
 # Remove all records
-*.warc
+# *.warc
 *.wat
 *.wet

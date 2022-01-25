@@ -6,7 +6,6 @@ from urllib.parse import urljoin
 
 from .record import CommonCrawlRecord
 
-
 class CommonCrawlRecordLoader:
 
     CC_SERVER_URL = "https://commoncrawl.s3.amazonaws.com/"
