@@ -5,6 +5,7 @@ import os
 
 from urllib.parse import urlparse
 
+
 class CommonCrawlRecord:
 
     def __init__(self, format, url, cc_url, data):
@@ -39,13 +40,11 @@ class CommonCrawlRecord:
         return self.__cc_url
 
     @property
-    def data(self):
-        if self.__is_zipped:
-            data_unzipped = gzip.decompress(self.__data)
-        else:
-            data_unzipped = self.__data
+    def data(self, zip=False):
+        if zip:
+            return self.__zip()
 
-        return data_unzipped.decode("utf-8")
+        return self.__unzip().decode("utf-8")
 
     @property
     def is_zipped(self):
@@ -54,32 +53,40 @@ class CommonCrawlRecord:
     def create_filename(self, url_string):
         url = urlparse(url_string)
         return f"{url.netloc}/{url.path}"
-        
+
+    def __unzip(self):
+        if self.__data and self.__is_zipped:
+            return gzip.decompress(self.__data)
+
+        return self.__data
+
     def unzip(self):
-        self.__data = gzip.decompress(self.__data)
+        self.__data = self.__unzip()
         self.__is_zipped = False
 
+    def __zip(self):
+        if self.__data and not self.__is_zipped:
+            return gzip.compress(self.__data)
+
+        return self.__data
+
     def zip(self):
-        self.__data = gzip.compress(self.__data)
+        self.__data = self.__zip()
         self.__is_zipped = True
 
-    def save(self, filename=None, directory="./", zip=True):
+    def save(self, filename=None, directory="./", zip=False):
         if self.__data is None:
             logging.info("No data available to save.")
             return
-        
+
         if filename is None:
             filename = self.name
-        
+
         if zip:
             filename = f"{filename}.gz"
-
-        if zip and not self.__is_zipped:
-            record_data = gzip.compress(self.__data)
-        elif not zip and self.__is_zipped:
-            record_data = gzip.decompress(self.__data)
+            record_data = self.__zip()
         else:
-            record_data = self.__data
+            record_data = self.__unzip()
 
         if not os.path.exists(directory):
             logging.info(f"Creating a new directory '{directory}'.")
@@ -88,9 +95,10 @@ class CommonCrawlRecord:
         filepath = os.path.join(directory, filename)
 
         if os.path.isfile(filepath):
-            commit = input(f"'{filepath}' is already a file. Overwrite? [y/n]: ")
-            
-            if commit != 'y': return
+            commit = input(f"'{filepath}' already exists. Overwrite? [y/n]: ")
+
+            if commit != 'y':
+                return
 
         with open(filepath, 'wb') as f:
             f.write(record_data)

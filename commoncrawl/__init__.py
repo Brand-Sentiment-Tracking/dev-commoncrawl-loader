@@ -1,2 +1,2 @@
-from .loader import CommonCrawlRecordLoader
-from .record import CommonCrawlRecord
+from .loader import CommonCrawlRecordLoader # noqa
+from .record import CommonCrawlRecord # noqa

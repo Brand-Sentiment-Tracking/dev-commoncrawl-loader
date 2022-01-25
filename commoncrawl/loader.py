@@ -1,10 +1,11 @@
-import requests
 import json
+import requests
 import logging
 
 from urllib.parse import urljoin
 
 from .record import CommonCrawlRecord
+
 
 class CommonCrawlRecordLoader:
 
@@ -55,10 +56,10 @@ class CommonCrawlRecordLoader:
     @collection_name.setter
     def collection_name(self, name):
         collection_ids = map(lambda c: c["id"], self.collections)
-        
+
         if name not in list(collection_ids):
-            raise ValueError(f"Collection '{name}' not available from CDX Server.")
-        
+            raise ValueError(f"Collection '{name}' unavailable from CDX.")
+
         self.__collection_name = name
 
     @property
@@ -70,13 +71,13 @@ class CommonCrawlRecordLoader:
         return self.__last_download
 
     def load_collections(self):
-        collection_info_url = urljoin(self.cdx_server_url, self.collection_info)
-        response = requests.get(collection_info_url)
-        
+        collections_url = urljoin(self.cdx_server_url, self.collection_info)
+        response = requests.get(collections_url)
+
         collections = response.json()
 
         if len(collections) == 0:
-            logging.warn("No available collections were found when fetching from CDX Server.")
+            logging.warn("No collections available from CDX.")
 
         return collections
 
@@ -90,18 +91,19 @@ class CommonCrawlRecordLoader:
         }
 
     def search(self, pattern):
-        payload = self.__search_payload(pattern)  
+        payload = self.__search_payload(pattern)
         collection_route = f"{self.collection_name}-index"
         collection_url = urljoin(self.cdx_server_url, collection_route)
 
         response = requests.get(collection_url, params=payload)
-        
+
         if response.ok:
             response_body = response.text.strip()
             response_json = "[" + response_body.replace("\n", ",") + "]"
             self.__last_search_results = json.loads(response_json)
         else:
-            logging.warn(f"Request to CDX server returned a bad status code ({response.status_code}).")
+            code = response.status_code
+            logging.warn(f"CDX Server returned a bad status code ({code}).")
             self.__last_search_results = None
 
         return self.last_search_results
@@ -120,36 +122,32 @@ class CommonCrawlRecordLoader:
 
         return byte_start, byte_end
 
-    def __download_header(self, byte_index, format):
-        headers = dict()
-        
-        if format == 'warc':
-            start, end = byte_index
-            headers.update({"Range": f"bytes={start}-{end}"})
-        
-        return headers
+    def __download_header(self, byte_index):
+        start, end = byte_index
+        return {"Range": f"bytes={start}-{end}"}
 
-    def download_record(self, record, format='warc'):
+    def download_record(self, record):
+        if int(record.get("status")) != 200:
+            logging.info("Record returned a bad status code when crawled.")
+
+        if record.get("encoding") != "UTF-8":
+            logging.warn("Record is not encoded from UTF-8. This may cause "
+                         "issues when decoding to a string.")
+
         byte_index = self.__get_byte_index(record)
-        headers = self.__download_header(byte_index, format)
+        headers = self.__download_header(byte_index)
 
-        if format != 'warc':
-            record_cc_path = record["filename"] \
-                .replace(".warc", f".warc.{format}") \
-                .replace("/warc/", f"/{format}/")
-        else:
-            record_cc_path = record["filename"]
-
-        record_cc_url = urljoin(self.cc_server_url, record_cc_path)
-
+        record_cc_url = urljoin(self.cc_server_url, record["filename"])
         response = requests.get(record_cc_url, headers=headers)
 
         if response.ok:
             self.__last_download = CommonCrawlRecord(
-                format, record["url"], record_cc_url, response.content)
+                'warc', record["url"], record_cc_url, response.content)
         else:
-            logging.warn(f"Failed to download record from '{record_cc_url}' (status code {response.status_code}).")
+            logging.warn(f"Failed to download record from '{record_cc_url}' "
+                         f"(status code {response.status_code}).")
+
             self.__last_download = CommonCrawlRecord(
-                format, record["url"], record_cc_url, None)
+                'warc', record["url"], record_cc_url, None)
 
         return self.last_download
