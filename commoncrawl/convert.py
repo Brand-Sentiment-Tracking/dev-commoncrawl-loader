@@ -1,6 +1,6 @@
 
 from fileinput import filename
-from boilerpipe.extract import Extractor
+from boilerpy3 import extractors
 from warcio.archiveiterator import ArchiveIterator
 
 
@@ -12,22 +12,21 @@ class WARCConverter:
 
     def convert(self, filename):
         with open(filename, 'rb') as stream:
+
+            data_dict = {}
             for record in ArchiveIterator(stream):
 
                 # Parse record into dictionary
-                data_dict = {}
                 data_dict["WARC-Target-URI"] = record.rec_headers.get_header('WARC-Target-URI')
                 data_dict["WARC-Date"] = record.rec_headers.get_header("WARC-Date")
                 
-                # Extract article text using boilerpipe
-                html = record.content_stream().read()
-                extractor = Extractor(extractor='ArticleSentencesExtractor', html=html)
-                extracted_text = extractor.getText()
-                data_dict["Text"] = extracted_text
+                # Extract article text using boilerpy
+                html = record.content_stream().read().decode("utf-8")
+                extractor = extractors.ArticleExtractor()
+                content = extractor.get_content(html)
+                data_dict["Text"] = content
 
-                return data_dict
-
-
+            return data_dict
 
 
 if __name__ == "__main__":

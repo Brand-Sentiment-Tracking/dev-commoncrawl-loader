@@ -69,6 +69,7 @@ class CommonCrawlRecordLoader:
     def last_download(self):
         return self.__last_download
 
+
     def load_collections(self):
         collections_url = urljoin(self.cdx_server_url, self.collection_info)
         response = requests.get(collections_url)
@@ -150,3 +151,4 @@ class CommonCrawlRecordLoader:
                 'warc', record["url"], record_cc_url, None)
 
         return self.last_download
+
