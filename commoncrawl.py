@@ -7,8 +7,8 @@ if __name__ == "__main__":
     logging.basicConfig(level="INFO")
 
     loader = CommonCrawlRecordLoader()
-    
-    #loader.collection_name = "CC-MAIN-2021-49"
+
+    # loader.collection_name = "CC-MAIN-2021-49"
     results = loader.search("https://bbc.co.uk/news/")
 
     pprint.pprint(results)
@@ -18,7 +18,7 @@ if __name__ == "__main__":
         article = record.create_article()
 
         record.save()
-        
+
         print(article.text)
 
         break

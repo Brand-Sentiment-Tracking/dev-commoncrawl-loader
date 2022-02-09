@@ -106,7 +106,7 @@ class CommonCrawlRecordLoader:
             logging.warn(f"CDX Server returned a bad status code ({code}).")
             if response.json():
                 logging.info("The response returned the following:\n"
-                            f"{pprint.pformat(response.json())}")
+                             f"{pprint.pformat(response.json())}")
             self.__last_search_results = None
 
         return self.last_search_results
