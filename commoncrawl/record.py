@@ -5,6 +5,9 @@ import os
 
 from urllib.parse import urlparse
 
+from .article import Article
+
+
 
 class CommonCrawlRecord:
 
@@ -104,3 +107,6 @@ class CommonCrawlRecord:
             f.write(record_data)
 
         logging.info(f"Saved record to '{filepath}'.")
+
+    def create_article(self):
+        return Article(self.name, self.data, self.url)
