@@ -27,25 +27,21 @@ class Article:
 
     def __parse_warc(self, text):
         with io.BytesIO(text.encode()) as stream:
+            records = ArchiveIterator(stream)
+            
+            article = next(records)
+            content = article.content_stream().read()
 
-            for i, article in enumerate(ArchiveIterator(stream)):
+        content_type = article.http_headers.get_header("Content-Type")
 
-                if i > 0:
-                    raise Exception("Found multiple WARC files in text.")
+        if article.rec_type != "response":
+            raise Exception("WARC file is not an article")
 
-                record_type = article.rec_type
-                content_type = article.http_headers.get_header("Content-Type")
+        elif "text/html" not in content_type:
+            raise Exception("WARC file does not contain HTML.")
 
-                if record_type != "response":
-                    raise Exception("WARC file is not an article")
-                    
-                elif "text/html" not in content_type:
-                    raise Exception("WARC file does not contain HTML.")
-
-                content = article.content_stream()
-
-                self.html = content.read().decode("utf-8")
-                self.warc = article
+        self.html = content.decode("utf-8")
+        self.warc = article
 
     def __set_metadata(self, url):
         self.url = self.warc.rec_headers.get_header("WARC-Target-URI")
