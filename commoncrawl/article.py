@@ -1,14 +1,10 @@
 import io
-import pprint
 import logging
 import dateutil
 
-from datetime import date
-from dateutil.parser import parse as date_parse
-
-
-from boilerpy3.extractors import ArticleExtractor
 from warcio import ArchiveIterator
+from boilerpy3.extractors import ArticleExtractor
+
 
 class Article:
 
@@ -56,8 +52,7 @@ class Article:
                          "    Selecting the URL from the WARC file.")
         
         date_extracted = self.warc.rec_headers.get_header("WARC-Date")
-        self.date = date_parse(date_extracted)
-        #self.date = date.fromisoformat(date_extracted)
+        self.date = dateutil.parser.parse(date_extracted)
 
 
     def __get_html_content(self):
