@@ -30,9 +30,10 @@ class Article:
         with io.BytesIO(text.encode()) as stream:
 
             for i, article in enumerate(ArchiveIterator(stream)):
+                
                 if i > 0:
                     raise Exception("Found multiple WARC files in text.")
-
+                
                 if article.rec_type != "response":
                     raise Exception("WARC file is not an article")
                 elif "text/html" not in article.http_headers.get_header("Content-Type"):
