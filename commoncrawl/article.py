@@ -5,6 +5,8 @@ import dateutil
 from warcio import ArchiveIterator
 from boilerpy3.extractors import ArticleExtractor
 
+from dateutil.parser import parse as parse_date
+
 
 class Article:
 
@@ -48,12 +50,12 @@ class Article:
         self.url = self.warc.rec_headers.get_header("WARC-Target-URI")
 
         if self.url != url:
-            logging.warn("The URLs passed from CC and in the WARC file" 
-                        f"do not match:\n    {self.url} != {url}\n"
+            logging.warn("The URLs passed from CC and in the WARC file do not match:\n" 
+                        f"    {self.url} != {url}\n"
                          "    Selecting the URL from the WARC file.")
         
         date_extracted = self.warc.rec_headers.get_header("WARC-Date")
-        self.date = dateutil.parser.parse(date_extracted)
+        self.date = parse_date(date_extracted)
 
 
     def __get_html_content(self):
