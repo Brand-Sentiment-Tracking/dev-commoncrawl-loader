@@ -4,11 +4,12 @@ import re
 import os
 
 from urllib.parse import urlparse
+from newspaper import fulltext
 
 
 class CommonCrawlRecord:
 
-    def __init__(self, format, url, cc_url, data):
+    def __init__(self, format, url, cc_url, data, is_zipped=True):
         self.__format = format
         self.__url = url
         self.__cc_url = cc_url
@@ -16,7 +17,7 @@ class CommonCrawlRecord:
 
         self.name = self.create_filename(url)
 
-        self.__is_zipped = True
+        self.__is_zipped = is_zipped
 
     @property
     def name(self):

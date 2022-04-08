@@ -4,10 +4,10 @@ import logging
 
 from urllib.parse import urljoin
 
-from .record import CommonCrawlRecord
+from ..record import CommonCrawlRecord
 
 
-class CommonCrawlRecordLoader:
+class CCMainRecordLoader:
 
     CC_SERVER_URL = "https://commoncrawl.s3.amazonaws.com/"
     CDX_SERVER_URL = "http://index.commoncrawl.org/"
@@ -27,19 +27,19 @@ class CommonCrawlRecordLoader:
 
     @property
     def cdx_server_url(self):
-        return CommonCrawlRecordLoader.CDX_SERVER_URL
+        return CCMainRecordLoader.CDX_SERVER_URL
 
     @property
     def collection_info(self):
-        return CommonCrawlRecordLoader.COLLECTION_INFO
+        return CCMainRecordLoader.COLLECTION_INFO
 
     @property
     def search_format(self):
-        return CommonCrawlRecordLoader.SEARCH_FORMAT
+        return CCMainRecordLoader.SEARCH_FORMAT
 
     @property
     def cc_server_url(self):
-        return CommonCrawlRecordLoader.CC_SERVER_URL
+        return CCMainRecordLoader.CC_SERVER_URL
 
     @property
     def collections(self):
