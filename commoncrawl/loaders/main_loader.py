@@ -1,6 +1,7 @@
 import json
 import requests
 import logging
+import pprint
 
 from urllib.parse import urljoin
 
@@ -94,7 +95,6 @@ class CCMainRecordLoader:
         payload = self.__search_payload(pattern)
         collection_route = f"{self.collection_name}-index"
         collection_url = urljoin(self.cdx_server_url, collection_route)
-
         response = requests.get(collection_url, params=payload)
 
         if response.ok:
@@ -104,6 +104,9 @@ class CCMainRecordLoader:
         else:
             code = response.status_code
             logging.warn(f"CDX Server returned a bad status code ({code}).")
+            if response.json():
+                logging.info("The response returned the following:\n"
+                             f"{pprint.pformat(response.json())}")
             self.__last_search_results = None
 
         return self.last_search_results

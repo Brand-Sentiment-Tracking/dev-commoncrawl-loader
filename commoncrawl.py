@@ -20,7 +20,11 @@ if __name__ == "__main__":
     """
     for record_data in results:
         record = loader.download_record(record_data)
+        article = record.create_article()
+
         record.save()
+
+        print(article.text)
 
         break
     """
