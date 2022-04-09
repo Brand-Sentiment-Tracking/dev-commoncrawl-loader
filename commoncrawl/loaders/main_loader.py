@@ -1,3 +1,4 @@
+import io
 import json
 import requests
 import logging
@@ -5,17 +6,24 @@ import pprint
 
 from urllib.parse import urljoin
 
+from warcio.archiveiterator import ArchiveIterator
+from newspaper import Article
+
 from ..record import CommonCrawlRecord
 
 
 class CCMainRecordLoader:
 
-    CC_DOMAIN = "https://commoncrawl.s3.amazonaws.com/"
-    CDX_DOMAIN = "http://index.commoncrawl.org/"
+    CC_DOMAIN = "https://data.commoncrawl.org"
+    CDX_DOMAIN = "http://index.commoncrawl.org"
     COLLECTION_INFO = "collinfo.json"
     SEARCH_FORMAT = "json"
 
-    def __init__(self, collection_name=None):
+    def __init__(self, article_callback=None, collection_name=None):
+        self.article_callback = article_callback \
+            if article_callback is not None \
+            else self.__empty_callback
+
         self.__collections = self.load_collections()
 
         if collection_name is None:
@@ -25,6 +33,20 @@ class CCMainRecordLoader:
 
         self.__last_search_results = None
         self.__last_download = None
+
+    @property
+    def article_callback(self):
+        return self.__article_callback
+
+    @article_callback.setter
+    def article_callback(self, func):
+        if not callable(func):
+            raise ValueError("Article callback is not a function.")
+
+        self.__article_callback = func
+
+    def __empty_callback(article):
+        return
 
     @property
     def collections(self):
@@ -82,15 +104,16 @@ class CCMainRecordLoader:
         response = requests.get(collection_url, params=payload)
 
         if response.ok:
-            response_body = response.text.strip()
-            response_json = "[" + response_body.replace("\n", ",") + "]"
-            self.__last_search_results = json.loads(response_json)
+            body = response.text.strip().splitlines()
+            search_results = list(map(json.loads, body))
+            self.__last_search_results = search_results
         else:
             code = response.status_code
             logging.warn(f"CDX Server returned a bad status code ({code}).")
             if response.json():
                 logging.info("The response returned the following:\n"
                              f"{pprint.pformat(response.json())}")
+            
             self.__last_search_results = None
 
         return self.last_search_results
@@ -138,3 +161,21 @@ class CCMainRecordLoader:
                 'warc', record["url"], record_cc_url, None)
 
         return self.last_download
+
+    def __parse_warc(self, text):
+        with io.BytesIO(text.encode()) as stream:
+            records = ArchiveIterator(stream)
+
+            article = next(records)
+            content = article.content_stream().read()
+
+        content_type = article.http_headers.get_header("Content-Type")
+
+        if article.rec_type != "response":
+            raise Exception("WARC file is not an article")
+
+        elif "text/html" not in content_type:
+            raise Exception("WARC file does not contain HTML.")
+
+        self.html = content.decode("utf-8")
+        self.warc = article

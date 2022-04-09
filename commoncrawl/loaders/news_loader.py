@@ -37,6 +37,7 @@ class CCNewsRecordLoader:
 
     CC_NEWS_ROUTE = os.path.join("crawl-data", "CC-NEWS")
     WARC_FILE_RE = re.compile(r"CC-NEWS-(?P<time>\d{14})-(?P<serial>\d{5})")
+    CONTENT_RE = re.compile(r"^(?P<mime>[\w\/]+);\s?charset=(?P<charset>.*)$")
 
     def __init__(self, article_callback=None):
         # Set article_callback to the empty callback if no function is passed
@@ -48,6 +49,8 @@ class CCNewsRecordLoader:
 
         self.__start_date = None
         self.__end_date = None
+
+        self.__reset_counts()
 
     @property
     def article_callback(self) -> Callable[[Article], None]:
@@ -82,7 +85,7 @@ class CCNewsRecordLoader:
 
     @property
     def patterns(self) -> "list[str]":
-        """:obj:`list` of :obj:`str` containing the url patterns to match the
+        """`list` of `str` containing the url patterns to match the
         article URL against when filtering.
 
         The setter method will throw a ValueError if the new patterns is not a
@@ -134,6 +137,26 @@ class CCNewsRecordLoader:
             raise ValueError("End date is in the future.")
 
         self.__end_date = end_date
+
+    @property
+    def extracted(self) -> int:
+        """`int`: The number of articles successfully extracted."""
+        return self.__extracted
+
+    @property
+    def discarded(self) -> int:
+        """`int`: The number of articles discarded before extraction."""
+        return self.__discarded
+
+    @property
+    def errored(self) -> int:
+        """`int`: The number of articles that errored during extraction."""
+        return self.__errored
+
+    def __reset_counts(self):
+        self.__extracted = 0
+        self.__discarded = 0
+        self.__errored = 0
 
     def __load_warc_paths(self, month: int, year: int) -> "list[str]":
         """Returns a list of warc files for a single month/year archive.
@@ -230,7 +253,7 @@ class CCNewsRecordLoader:
         filenames = list()
 
         for dt in rrule(MONTHLY, self.start_date, until=self.end_date):
-            logging.info(f"Downloading warc paths for {dt}")
+            logging.info(f"Downloading warc paths for {dt.date()}.")
             filenames.extend(self.__load_warc_paths(dt.month, dt.year))
 
         return self.__filter_warc_paths(filenames)
@@ -239,8 +262,8 @@ class CCNewsRecordLoader:
         """Checks whether a warc record should be extracted to an article.
 
         This is done by checking:
-        - The record type is a response
-        - Its MIME type is `text/html`
+        - The record type is a response.
+        - Its MIME type is `text/html` and its charset is UTF-8.
         - The source URL matches one of the url patterns.
 
         Args:
@@ -254,9 +277,14 @@ class CCNewsRecordLoader:
             return False
 
         source_url = record.rec_headers.get_header("WARC-Target-URI")
-        content = record.http_headers.get_header('Content-Type')
+        content_string = record.http_headers.get_header('Content-Type')
 
-        if content != "text/html" or source_url is None:
+        content = self.CONTENT_RE.match(content_string)
+
+        if content is None or source_url is None \
+            or content.group("mime") != "text/html" \
+                or content.group("charset").lower() != "utf-8":
+
             return False
 
         return any(map(lambda url: fnmatch(source_url, url), self.patterns))
@@ -279,6 +307,7 @@ class CCNewsRecordLoader:
 
             if not self.__is_valid_record(record):
                 logging.debug(f"Ignoring '{url}'")
+                self.__discarded += 1
                 continue
 
             article = Article(url)
@@ -287,10 +316,11 @@ class CCNewsRecordLoader:
                 html = record.content_stream().read().decode("utf-8")
                 article.download(input_html=html)
                 article.parse()
-
+                self.__extracted += 1
             # Blanket error catch here. Should be made more specific
             except Exception as e:
-                logging.error(repr(e))
+                logging.warn(str(e))
+                self.__errored += 1
 
             # Conditional here so exceptions in the callback are still raised
             if article.is_parsed:
@@ -308,6 +338,7 @@ class CCNewsRecordLoader:
                 including the CommonCrawl domain).
         """
         warc_url = urljoin(self.CC_DOMAIN, warc_path)
+        logging.info(f"Downloading '{warc_url}'")
         response = requests.get(warc_url, stream=True)
 
         if response.ok:
@@ -332,11 +363,12 @@ class CCNewsRecordLoader:
                 crawled by.
         """
         self.patterns = patterns
-
         self.end_date = end_date
         self.start_date = start_date
 
         warc_paths = self.__retrieve_warc_paths()
+
+        self.__reset_counts()
 
         for warc in warc_paths:
             self.__load_warc(warc)

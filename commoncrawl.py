@@ -6,11 +6,12 @@ from commoncrawl.loaders import CCNewsRecordLoader
 
 
 def print_article(article):
-    pprint.pprint(article.__dict__)
+    #pprint.pprint(article.__dict__)
+    return
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
 
     end_date = datetime.today()
     start_date = end_date - timedelta(days=1)
