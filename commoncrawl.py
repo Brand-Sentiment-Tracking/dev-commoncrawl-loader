@@ -1,13 +1,11 @@
 import logging
-import pprint
 
 from datetime import datetime, timedelta
 from commoncrawl.loaders import CCNewsRecordLoader
 
 
 def print_article(article):
-    #pprint.pprint(article.__dict__)
-    return
+    logging.info(article.title)
 
 
 if __name__ == "__main__":
@@ -19,15 +17,3 @@ if __name__ == "__main__":
 
     loader = CCNewsRecordLoader(print_article)
     loader.download_articles(valid_urls, start_date, end_date)
-
-    """
-    for record_data in results:
-        record = loader.download_record(record_data)
-        article = record.create_article()
-
-        record.save()
-
-        print(article.text)
-
-        break
-    """

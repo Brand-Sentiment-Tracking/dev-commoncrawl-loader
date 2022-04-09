@@ -2,6 +2,7 @@ import re
 import gzip
 import requests
 import logging
+import langdetect
 
 import os.path
 
@@ -19,6 +20,7 @@ from warcio.archiveiterator import ArchiveIterator
 from warcio.recordloader import ArcWarcRecord
 
 from newspaper import Article
+from newspaper.utils import get_available_languages
 
 
 class CCNewsRecordLoader:
@@ -34,10 +36,12 @@ class CCNewsRecordLoader:
     """
     WARC_PATHS = "warc.paths.gz"
     CC_DOMAIN = "https://data.commoncrawl.org"
-
     CC_NEWS_ROUTE = os.path.join("crawl-data", "CC-NEWS")
+
     WARC_FILE_RE = re.compile(r"CC-NEWS-(?P<time>\d{14})-(?P<serial>\d{5})")
     CONTENT_RE = re.compile(r"^(?P<mime>[\w\/]+);\s?charset=(?P<charset>.*)$")
+
+    SUPPORTED_LANGUAGES = get_available_languages()
 
     def __init__(self, article_callback=None):
         # Set article_callback to the empty callback if no function is passed
@@ -289,15 +293,41 @@ class CCNewsRecordLoader:
 
         return any(map(lambda url: fnmatch(source_url, url), self.patterns))
 
-    def __parse_records(self, warc: HTTPResponse):
-        """Iterate through articles from a warc file.
+    def __extract_article(self, url: str, html: str, language: str):
+        """Extracts the article from its html and update counters.
 
-        Each record is loaded using warcio, and extracted if it is a valid
-        news article and its source URL matches one of the patterns. Once
-        successfully extracted, it is then passed to `article_callback`.
+        Once successfully extracted, it is then passed to `article_callback`.
 
         Note:
             If the extraction process fails, the article will be discarded.
+
+        Args:
+            url (str): The source URL of the article.
+            html (str): The complete HTML structure of the record.
+            language (str): The two-char language code of the record.
+        """
+        article = Article(url, language=language)
+
+        try:
+            article.download(input_html=html)
+            article.parse()
+            self.__extracted += 1
+        # Blanket error catch here. Should be made more specific
+        except Exception as e:
+            logging.warn(str(e))
+            self.__errored += 1
+
+        # Conditional here so exceptions in the callback are still raised
+        if article.is_parsed:
+            self.article_callback(article)
+
+    def __parse_records(self, warc: HTTPResponse):
+        """Iterate through articles from a warc file.
+
+        Each record is loaded using warcio, and extracted if:
+        - It is a valid news article (see __is_valid_record)
+        - Its source URL matches one of the patterns.
+        - The detected language is supported by newspaper.
 
         Args:
             warc (HTTPResponse): The complete warc file as a stream.
@@ -310,21 +340,19 @@ class CCNewsRecordLoader:
                 self.__discarded += 1
                 continue
 
-            article = Article(url)
-
             try:
                 html = record.content_stream().read().decode("utf-8")
-                article.download(input_html=html)
-                article.parse()
-                self.__extracted += 1
-            # Blanket error catch here. Should be made more specific
-            except Exception as e:
-                logging.warn(str(e))
-                self.__errored += 1
+                language = langdetect.detect(html)
+            except UnicodeDecodeError:
+                logging.debug(f"Couldn't decode '{url}'")
+                continue
 
-            # Conditional here so exceptions in the callback are still raised
-            if article.is_parsed:
-                self.article_callback(article)
+            if language not in self.SUPPORTED_LANGUAGES:
+                logging.debug(f"Language not supported for '{url}'")
+                self.__discarded += 1
+                continue
+
+            self.__extract_article(url, html, language)
 
     def __load_warc(self, warc_path: str):
         """Downloads and parses a warc file for article extraction.
