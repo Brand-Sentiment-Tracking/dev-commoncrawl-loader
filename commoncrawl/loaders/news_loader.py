@@ -3,63 +3,112 @@ import gzip
 import requests
 import logging
 
+import os.path
+
+from typing import Callable
+
 from datetime import datetime
 from dateutil.rrule import rrule, MONTHLY
 
-from os.path import join as path_join
 from fnmatch import fnmatch
 
+from urllib3.response import HTTPResponse
+
 from warcio.archiveiterator import ArchiveIterator
+from warcio.recordloader import ArcWarcRecord
+
 from newspaper import Article
 
 
 class CCNewsRecordLoader:
+    """Load and parse articles from CommonCrawl News Archive.
 
-    CC_DOMAIN = "https://data.commoncrawl.org"
-    CC_NEWS_ROUTE = path_join(CC_DOMAIN, "crawl-data", "CC-NEWS")
+    Note:
+        This is for extracting articles from the CC-NEWS collection. For the
+        CC-MAIN collections, use the `CCMainRecordLoader` class.
+
+    Args:
+        article_callback (callable): A function that is called once an article
+            has been extracted.
+    """
     WARC_PATHS = "warc.paths.gz"
+    CC_DOMAIN = "https://data.commoncrawl.org"
 
+    CC_NEWS_ROUTE = os.path.join(CC_DOMAIN, "crawl-data", "CC-NEWS")
     WARC_FILE_RE = re.compile(r"CC-NEWS-(?P<time>\d{14})-(?P<serial>\d{5})")
 
     def __init__(self, article_callback=None):
-
+        # Set article_callback to the empty callback if no function is passed
         self.article_callback = article_callback \
             if article_callback is not None \
             else self.__empty_callback
 
-        self.urls = list()
+        self.patterns = list()
 
         self.__start_date = None
         self.__end_date = None
 
     @property
-    def article_callback(self):
+    def article_callback(self) -> Callable[[Article], None]:
+        """:obj:`callable`: Called once an article has been extracted.
+
+        Note:
+            The callback is passed one argument: the article as a
+                `newspaper.Article` object.
+
+        The setter method will throw a ValueError if the new callback is not
+        a function.
+        """
         return self.__article_callback
 
     @article_callback.setter
-    def article_callback(self, func):
+    def article_callback(self, func: Callable[[Article], None]):
         if not callable(func):
-            raise ValueError("Article callback must be a function.")
+            raise ValueError("Article callback is not a function.")
 
         self.__article_callback = func
 
+    def __empty_callback(article):
+        """Default function when an article_callback isn't specified.
+
+        Note:
+            This function does nothing.
+
+        Args:
+            article (newspaper.Article): The extracted article.
+        """
+        return
+
     @property
-    def urls(self):
-        return self.__urls
+    def patterns(self) -> "list[str]":
+        """:obj:`list` of :obj:`str` containing the url patterns to match the
+        article URL against when filtering.
 
-    @urls.setter
-    def urls(self, urls):
-        if type(urls) != list or any(map(lambda x: type(x) != str, urls)):
-            raise ValueError("URL patterns is not a list of strings.")
+        The setter method will throw a ValueError if the new patterns is not a
+        list of strings.
+        """
+        return self.__patterns
 
-        self.__urls = urls
+    @patterns.setter
+    def patterns(self, patterns: "list[str]"):
+        if type(patterns) != list:
+            raise ValueError("URL patterns is not a list.")
+        elif any(map(lambda x: type(x) != str, patterns)):
+            raise ValueError("Not all URL patterns are strings.")
+
+        self.__patterns = patterns
 
     @property
-    def start_date(self):
+    def start_date(self) -> datetime:
+        """`datetime`: The starting date to filter the articles between.
+
+        The setter method will throw a ValueError if the new date is not a
+        `datetime` object or it is later than the end date.
+        """
         return self.__start_date
 
     @start_date.setter
-    def start_date(self, start_date):
+    def start_date(self, start_date: datetime):
         if type(start_date) != datetime:
             raise ValueError("Start date isn't type 'datetime'.")
         elif start_date >= self.end_date:
@@ -68,11 +117,16 @@ class CCNewsRecordLoader:
         self.__start_date = start_date
 
     @property
-    def end_date(self):
+    def end_date(self) -> datetime:
+        """`datetime`: The ending date to filter the articles between.
+
+        The setter method will throw a ValueError if the new date is not a
+        `datetime` object or it is in the future.
+        """
         return self.__end_date
 
     @end_date.setter
-    def end_date(self, end_date):
+    def end_date(self, end_date: datetime):
         if type(end_date) != datetime:
             raise ValueError("End date isn't type 'datetime'.")
         elif end_date >= datetime.now():
@@ -80,13 +134,24 @@ class CCNewsRecordLoader:
 
         self.__end_date = end_date
 
-    def __empty_callback(article):
-        return
+    def __load_warc_paths(self, month: int, year: int) -> "list[str]":
+        """Returns a list of warc files for a single month/year archive.
 
-    def __load_warc_paths(self, month, year):
-        paths_url = path_join(self.CC_NEWS_ROUTE, str(year),
-                              str(month).zfill(2),
-                              self.WARC_PATHS)
+        Note:
+            If the files for a given month/year cannot be obtained, an empty
+            list is returned.
+
+        Args:
+            month (int): The month to index (between 1 and 12).
+            year (int): The year to index. Must be 4 digits.
+
+        Returns:
+            list[str]: A list of warc files in the archive for records
+                crawled in the month and year passed.
+        """
+        paths_url = os.path.join(self.CC_NEWS_ROUTE, str(year),
+                                 str(month).zfill(2),
+                                 self.WARC_PATHS)
 
         response = requests.get(paths_url)
 
@@ -101,11 +166,30 @@ class CCNewsRecordLoader:
 
         return filenames
 
-    def __is_within_date(self, warc_file):
-        match = CCNewsRecordLoader.WARC_FILE_RE.search(warc_file)
+    def __is_within_date(self, warc_filepath: str) -> bool:
+        """Checks whether a warc was crawled between the start and end dates.
+
+        This is done by extracting the timetamp from the filename, parsing
+        it to a datetime and comparing it to start_date and end_date.
+
+        Note:
+            If the filepath doesn't match the warc filename regex, the method
+                will return False.
+
+        Args:
+            warc_filepath (str): The path from CC-NEWS domain to the file.
+                The path is not checked, but the filename should have the
+                following structure:
+                    `CC-NEWS-20220401000546-00192.warc.gz`
+
+        Returns:
+            bool: True if the warc file was crawled within the start and end
+                dates. False otherwise.
+        """
+        match = self.WARC_FILE_RE.search(warc_filepath)
 
         if match is None:
-            logging.debug(f"Ignoring '{warc_file}'.")
+            logging.debug(f"Ignoring '{warc_filepath}'.")
             return False
 
         time = match.group("time")
@@ -114,10 +198,33 @@ class CCNewsRecordLoader:
         return crawl_date >= self.start_date \
             and crawl_date < self.end_date
 
-    def __filter_warc_paths(self, filenames):
-        return list(filter(self.__is_within_date, filenames))
+    def __filter_warc_paths(self, filepaths: "list[str]") -> "list[str]":
+        """Filters the list of warc filepaths to those crawled between the
+        start and end dates.
 
-    def __retrieve_warc_paths(self):
+        Note:
+            Any filepath that doesn't match the warc filename regex is
+                automatically discarded.
+
+        Args:
+            filenames (list[str]): List of warc filepaths to filter.
+
+        Returns:
+            list[str]: The filtered list of warc filepaths.
+        """
+        return list(filter(self.__is_within_date, filepaths))
+
+    def __retrieve_warc_paths(self) -> "list[str]":
+        """Returns a list of warc filepaths from CC-NEWS that were crawled
+        between the start and end dates.
+
+        This done by looping through each monthly archive and extracting the
+        ones that fall between the dates based on the timestamp within the
+        warc filename.
+
+        Returns:
+            list[str]: A list of warc filepaths.
+        """
         filenames = list()
 
         for dt in rrule(MONTHLY, self.start_date, until=self.end_date):
@@ -126,21 +233,48 @@ class CCNewsRecordLoader:
 
         return self.__filter_warc_paths(filenames)
 
-    def __is_valid_record(self, record):
+    def __is_valid_record(self, record: ArcWarcRecord) -> bool:
+        """Checks whether a warc record should be extracted to an article.
+
+        This is done by checking:
+        - The record type is a response
+        - Its MIME type is `text/html`
+        - The source URL matches one of the url patterns.
+
+        Args:
+            record (ArcWarcRecord): The record to evaluate.
+
+        Returns:
+            bool: True if the record is valid and should be extracted to an
+                article. False otherwise.
+        """
         if record.rec_type != "response":
             return False
 
-        record_url = record.rec_headers.get_header("WARC-Target-URI")
+        source_url = record.rec_headers.get_header("WARC-Target-URI")
         content = record.http_headers.get_header('Content-Type')
 
-        if content != "text/html" or record_url is None:
+        if content != "text/html" or source_url is None:
             return False
 
-        return any(map(lambda url: fnmatch(record_url, url), self.urls))
+        return any(map(lambda url: fnmatch(source_url, url), self.patterns))
 
-    def __parse_warcs(self, response):
-        for record in ArchiveIterator(response.raw, arc2warc=True):
+    def __parse_records(self, warc: HTTPResponse):
+        """Iterate through articles from a warc file.
+
+        Each record is loaded using warcio, and extracted if it is a valid
+        news article and its source URL matches one of the patterns. Once
+        successfully extracted, it is then passed to `article_callback`.
+
+        Note:
+            If the extraction process fails, the article will be discarded.
+
+        Args:
+            warc (HTTPResponse): The complete warc file as a stream.
+        """
+        for record in ArchiveIterator(warc, arc2warc=True):
             url = record.rec_headers.get_header("WARC-Target-URI")
+
             if not self.__is_valid_record(record):
                 logging.debug(f"Ignoring '{url}'")
                 continue
@@ -148,27 +282,54 @@ class CCNewsRecordLoader:
             article = Article(url)
 
             try:
-                html = record.content_stream().read()
-                article.download(input_html=html.decode("utf-8"))
+                html = record.content_stream().read().decode("utf-8")
+                article.download(input_html=html)
                 article.parse()
 
+            # Blanket error catch here. Should be made more specific
             except Exception as e:
                 logging.error(repr(e))
 
-            self.article_callback(article)
+            # Conditional here so exceptions in the callback are still raised
+            if article.is_parsed:
+                self.article_callback(article)
 
-    def __load_warc(self, path):
-        warc_url = path_join(self.CC_DOMAIN, path)
+    def __load_warc(self, warc_path: str):
+        """Downloads and parses a warc file for article extraction.
+
+        Note:
+            If the response returns a bad status code, the method will exit
+            without parsing the warc file.
+
+        Args:
+            warc_path (str): The route of the warc file to be downloaded (not
+                including the CommonCrawl domain).
+        """
+        warc_url = os.path.join(self.CC_DOMAIN, warc_path)
         response = requests.get(warc_url, stream=True)
 
         if response.ok:
-            self.__parse_warcs(response)
+            self.__parse_records(response.raw)
         else:
             logging.warn(f"Failed to download warc from '{warc_url}' "
                          f"(status code {response.status_code}).")
 
-    def download_articles(self, urls, start_date, end_date):
-        self.urls = urls
+    def download_articles(self, patterns: "list[str]", start_date: datetime,
+                          end_date: datetime):
+        """Downloads and extracts articles from CC-NEWS.
+
+        Articles are extracted only if:
+        - The source URL matches one of the URL patterns.
+        - The article was crawled between the start and end dates.
+
+        Args:
+            patterns (list[str]): List of URL patterns the article must match.
+            start_date (datetime): The earliest date the article must have
+                been crawled.
+            end_date (datetime): The latest date the article must have been
+                crawled by.
+        """
+        self.patterns = patterns
 
         self.end_date = end_date
         self.start_date = start_date
