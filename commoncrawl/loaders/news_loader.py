@@ -13,6 +13,7 @@ from dateutil.rrule import rrule, MONTHLY
 from fnmatch import fnmatch
 
 from urllib3.response import HTTPResponse
+from urllib.parse import urljoin
 
 from warcio.archiveiterator import ArchiveIterator
 from warcio.recordloader import ArcWarcRecord
@@ -34,7 +35,7 @@ class CCNewsRecordLoader:
     WARC_PATHS = "warc.paths.gz"
     CC_DOMAIN = "https://data.commoncrawl.org"
 
-    CC_NEWS_ROUTE = os.path.join(CC_DOMAIN, "crawl-data", "CC-NEWS")
+    CC_NEWS_ROUTE = os.path.join("crawl-data", "CC-NEWS")
     WARC_FILE_RE = re.compile(r"CC-NEWS-(?P<time>\d{14})-(?P<serial>\d{5})")
 
     def __init__(self, article_callback=None):
@@ -50,7 +51,7 @@ class CCNewsRecordLoader:
 
     @property
     def article_callback(self) -> Callable[[Article], None]:
-        """:obj:`callable`: Called once an article has been extracted.
+        """`callable`: Called once an article has been extracted.
 
         Note:
             The callback is passed one argument: the article as a
@@ -68,14 +69,14 @@ class CCNewsRecordLoader:
 
         self.__article_callback = func
 
-    def __empty_callback(article):
+    def __empty_callback(article: Article):
         """Default function when an article_callback isn't specified.
 
         Note:
             This function does nothing.
 
         Args:
-            article (newspaper.Article): The extracted article.
+            article (Article): The extracted article.
         """
         return
 
@@ -149,9 +150,10 @@ class CCNewsRecordLoader:
             list[str]: A list of warc files in the archive for records
                 crawled in the month and year passed.
         """
-        paths_url = os.path.join(self.CC_NEWS_ROUTE, str(year),
-                                 str(month).zfill(2),
-                                 self.WARC_PATHS)
+        paths_route = os.path.join(self.CC_NEWS_ROUTE, str(year),
+                                   str(month).zfill(2), self.WARC_PATHS)
+
+        paths_url = urljoin(self.CC_DOMAIN, paths_route)
 
         response = requests.get(paths_url)
 
@@ -305,7 +307,7 @@ class CCNewsRecordLoader:
             warc_path (str): The route of the warc file to be downloaded (not
                 including the CommonCrawl domain).
         """
-        warc_url = os.path.join(self.CC_DOMAIN, warc_path)
+        warc_url = urljoin(self.CC_DOMAIN, warc_path)
         response = requests.get(warc_url, stream=True)
 
         if response.ok:
