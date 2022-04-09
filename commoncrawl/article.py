@@ -47,10 +47,9 @@ class Article:
         self.url = self.warc.rec_headers.get_header("WARC-Target-URI")
 
         if self.url != url:
-            logging.warn("The URLs passed from CC and in the WARC file "
-                         "do not match:\n"
-                         f"    {self.url} != {url}\n"
-                         "    Selecting the URL from the WARC file.")
+            logging.warn(f"The URLs passed from CC and in the WARC file "
+                         f"do not match:\n\t{self.url} != {url}\n\t"
+                         f"Selecting the URL from the WARC file.")
 
         date_extracted = self.warc.rec_headers.get_header("WARC-Date")
         self.date = parse_date(date_extracted)
