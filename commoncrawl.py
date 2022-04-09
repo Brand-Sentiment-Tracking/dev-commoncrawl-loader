@@ -4,8 +4,10 @@ import pprint
 from datetime import datetime, timedelta
 from commoncrawl.loaders import CCNewsRecordLoader
 
+
 def print_article(article):
     pprint.pprint(article.__dict__)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.ERROR)

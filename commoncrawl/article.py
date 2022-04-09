@@ -28,7 +28,7 @@ class Article:
     def __parse_warc(self, text):
         with io.BytesIO(text.encode()) as stream:
             records = ArchiveIterator(stream)
-            
+
             article = next(records)
             content = article.content_stream().read()
 

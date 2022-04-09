@@ -10,8 +10,8 @@ from ..record import CommonCrawlRecord
 
 class CCMainRecordLoader:
 
-    CC_SERVER_URL = "https://commoncrawl.s3.amazonaws.com/"
-    CDX_SERVER_URL = "http://index.commoncrawl.org/"
+    CC_DOMAIN = "https://commoncrawl.s3.amazonaws.com/"
+    CDX_DOMAIN = "http://index.commoncrawl.org/"
     COLLECTION_INFO = "collinfo.json"
     SEARCH_FORMAT = "json"
 
@@ -25,22 +25,6 @@ class CCMainRecordLoader:
 
         self.__last_search_results = None
         self.__last_download = None
-
-    @property
-    def cdx_server_url(self):
-        return CCMainRecordLoader.CDX_SERVER_URL
-
-    @property
-    def collection_info(self):
-        return CCMainRecordLoader.COLLECTION_INFO
-
-    @property
-    def search_format(self):
-        return CCMainRecordLoader.SEARCH_FORMAT
-
-    @property
-    def cc_server_url(self):
-        return CCMainRecordLoader.CC_SERVER_URL
 
     @property
     def collections(self):
@@ -72,7 +56,7 @@ class CCMainRecordLoader:
         return self.__last_download
 
     def load_collections(self):
-        collections_url = urljoin(self.cdx_server_url, self.collection_info)
+        collections_url = urljoin(self.CDX_DOMAIN, self.COLLECTION_INFO)
         response = requests.get(collections_url)
 
         collections = response.json()
@@ -88,13 +72,13 @@ class CCMainRecordLoader:
     def __search_payload(self, pattern):
         return {
             "url": pattern,
-            "output": self.search_format,
+            "output": self.SEARCH_FORMAT,
         }
 
     def search(self, pattern):
         payload = self.__search_payload(pattern)
         collection_route = f"{self.collection_name}-index"
-        collection_url = urljoin(self.cdx_server_url, collection_route)
+        collection_url = urljoin(self.CDX_DOMAIN, collection_route)
         response = requests.get(collection_url, params=payload)
 
         if response.ok:
@@ -140,7 +124,7 @@ class CCMainRecordLoader:
         byte_index = self.__get_byte_index(record)
         headers = self.__download_header(byte_index)
 
-        record_cc_url = urljoin(self.cc_server_url, record["filename"])
+        record_cc_url = urljoin(self.CC_DOMAIN, record["filename"])
         response = requests.get(record_cc_url, headers=headers)
 
         if response.ok:

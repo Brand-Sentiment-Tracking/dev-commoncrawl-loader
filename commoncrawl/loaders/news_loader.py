@@ -1,4 +1,3 @@
-import os
 import re
 import gzip
 import requests
@@ -7,7 +6,7 @@ import logging
 from datetime import datetime
 from dateutil.rrule import rrule, MONTHLY
 
-from urllib.parse import urljoin
+from os.path import join as path_join
 from fnmatch import fnmatch
 
 from warcio.archiveiterator import ArchiveIterator
@@ -17,9 +16,8 @@ from newspaper import Article
 class CCNewsRecordLoader:
 
     CC_DOMAIN = "https://data.commoncrawl.org"
-    CC_NEWS = urljoin(CC_DOMAIN, "crawl-data/CC-NEWS")
-    
-    WARC_PATH = "warc.paths.gz"
+    CC_NEWS_ROUTE = path_join(CC_DOMAIN, "crawl-data", "CC-NEWS")
+    WARC_PATHS = "warc.paths.gz"
 
     WARC_FILE_RE = re.compile(r"CC-NEWS-(?P<time>\d{14})-(?P<serial>\d{5})")
 
@@ -42,18 +40,18 @@ class CCNewsRecordLoader:
     def article_callback(self, func):
         if not callable(func):
             raise ValueError("Article callback must be a function.")
-        
+
         self.__article_callback = func
 
     @property
     def urls(self):
         return self.__urls
-    
+
     @urls.setter
     def urls(self, urls):
-        if type(urls) != list and any(map(lambda x: type(x) != str), urls):
+        if type(urls) != list or any(map(lambda x: type(x) != str, urls)):
             raise ValueError("URL patterns is not a list of strings.")
-        
+
         self.__urls = urls
 
     @property
@@ -66,7 +64,7 @@ class CCNewsRecordLoader:
             raise ValueError("Start date isn't type 'datetime'.")
         elif start_date >= self.end_date:
             raise ValueError("Start date is on or after the end date.")
-        
+
         self.__start_date = start_date
 
     @property
@@ -79,24 +77,24 @@ class CCNewsRecordLoader:
             raise ValueError("End date isn't type 'datetime'.")
         elif end_date >= datetime.now():
             raise ValueError("End date is in the future.")
-        
+
         self.__end_date = end_date
 
     def __empty_callback(article):
         return
 
     def __load_warc_paths(self, month, year):
-        warc_paths_url = os.path.join(CCNewsRecordLoader.CC_NEWS, 
-                                      str(year), str(month).zfill(2), 
-                                      CCNewsRecordLoader.WARC_PATH)
-                                
-        response = requests.get(warc_paths_url)
+        paths_url = path_join(self.CC_NEWS_ROUTE, str(year),
+                              str(month).zfill(2),
+                              self.WARC_PATHS)
+
+        response = requests.get(paths_url)
 
         if response.ok:
             content = gzip.decompress(response.content)
             filenames = content.decode("utf-8").splitlines()
         else:
-            logging.warn(f"Failed to download paths from '{warc_paths_url}' "
+            logging.warn(f"Failed to download paths from '{paths_url}' "
                          f"(status code {response.status_code}).")
 
             filenames = list()
@@ -114,16 +112,16 @@ class CCNewsRecordLoader:
         crawl_date = datetime.strptime(time, "%Y%m%d%H%M%S")
 
         return crawl_date >= self.start_date \
-            and crawl_date < self.end_date  
+            and crawl_date < self.end_date
 
     def __filter_warc_paths(self, filenames):
         return list(filter(self.__is_within_date, filenames))
 
     def __retrieve_warc_paths(self):
         filenames = list()
-        
+
         for dt in rrule(MONTHLY, self.start_date, until=self.end_date):
-            logging.debug(f"Downloading warc paths for {dt}")
+            logging.info(f"Downloading warc paths for {dt}")
             filenames.extend(self.__load_warc_paths(dt.month, dt.year))
 
         return self.__filter_warc_paths(filenames)
@@ -134,7 +132,7 @@ class CCNewsRecordLoader:
 
         record_url = record.rec_headers.get_header("WARC-Target-URI")
         content = record.http_headers.get_header('Content-Type')
-        
+
         if content != "text/html" or record_url is None:
             return False
 
@@ -146,21 +144,21 @@ class CCNewsRecordLoader:
             if not self.__is_valid_record(record):
                 logging.debug(f"Ignoring '{url}'")
                 continue
-            
+
             article = Article(url)
 
             try:
-                html = record.content_stream().read()                
+                html = record.content_stream().read()
                 article.download(input_html=html.decode("utf-8"))
                 article.parse()
 
             except Exception as e:
                 logging.error(repr(e))
-            
+
             self.article_callback(article)
 
     def __load_warc(self, path):
-        warc_url = urljoin(self.CC_DOMAIN, path)
+        warc_url = path_join(self.CC_DOMAIN, path)
         response = requests.get(warc_url, stream=True)
 
         if response.ok:
@@ -176,6 +174,6 @@ class CCNewsRecordLoader:
         self.start_date = start_date
 
         warc_paths = self.__retrieve_warc_paths()
-        
+
         for warc in warc_paths:
             self.__load_warc(warc)
