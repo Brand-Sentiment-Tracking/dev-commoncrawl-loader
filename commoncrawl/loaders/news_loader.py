@@ -54,7 +54,7 @@ class CCNewsRecordLoader:
         self.__start_date = None
         self.__end_date = None
 
-        self.__reset_counts()
+        self.reset_counts()
 
     @property
     def article_callback(self) -> Callable[[Article], None]:
@@ -157,7 +157,8 @@ class CCNewsRecordLoader:
         """`int`: The number of articles that errored during extraction."""
         return self.__errored
 
-    def __reset_counts(self):
+    def reset_counts(self):
+        """Reset the counters for extracted/discarded/errored to zero."""
         self.__extracted = 0
         self.__discarded = 0
         self.__errored = 0
@@ -395,8 +396,6 @@ class CCNewsRecordLoader:
         self.start_date = start_date
 
         warc_paths = self.__retrieve_warc_paths()
-
-        self.__reset_counts()
 
         for warc in warc_paths:
             self.__load_warc(warc)
