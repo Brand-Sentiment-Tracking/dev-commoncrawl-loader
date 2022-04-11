@@ -54,7 +54,7 @@ class CCMainArticleLoader:
         self.reset_counts()
 
     @property
-    def article_callback(self) -> Callable[[Article], None]:
+    def article_callback(self) -> Callable[[Article, datetime], None]:
         """`callable`: Called once an article has been extracted.
 
         Note:
@@ -67,7 +67,7 @@ class CCMainArticleLoader:
         return self.__article_callback
 
     @article_callback.setter
-    def article_callback(self, func: Callable[[Article], None]):
+    def article_callback(self, func: Callable[[Article, datetime], None]):
         if not callable(func):
             raise ValueError("Article callback is not a function.")
 
@@ -264,7 +264,8 @@ class CCMainArticleLoader:
 
         return True
 
-    def extract_article(self, url: str, html: str, language: str):
+    def extract_article(self, url: str, html: str, language: str,
+                        date_crawled: datetime):
         """Extracts the article from its html and update counters.
 
         Once successfully extracted, it is then passed to `article_callback`.
@@ -295,7 +296,7 @@ class CCMainArticleLoader:
 
         # Conditional here so exceptions in the callback are still raised
         if article.is_parsed:
-            self.article_callback(article)
+            self.article_callback(article, date_crawled)
 
     def __parse_records(self, warc: HTTPResponse):
         """Iterate through articles from a warc file.
@@ -312,6 +313,9 @@ class CCMainArticleLoader:
         record = next(records)
 
         url = record.rec_headers.get_header("WARC-Target-URI")
+        iso_date = record.rec_headers.get_header("WARC-Date")
+
+        date_crawled = datetime.fromisoformat(iso_date)
 
         if not self.__is_valid_record(record):
             logging.debug(f"Ignoring '{url}'")
@@ -326,9 +330,9 @@ class CCMainArticleLoader:
             self.__errored += 1
             return
 
-        self.extract_article(url, html, language)
+        self.extract_article(url, html, language, date_crawled)
 
-    def load_warc_file(self, warc_path: str, headers: Optional[dict] = None):
+    def __load_warc(self, warc_path: str, headers: Optional[dict] = None):
         """Downloads and parses a warc file for article extraction.
 
         Note:
@@ -364,7 +368,7 @@ class CCMainArticleLoader:
         headers = self.__download_header(byte_index)
         warc_path = record_metadata.get("filename")
 
-        self.load_warc_file(warc_path, headers=headers)
+        self.__load_warc(warc_path, headers=headers)
 
     def download_articles(self, patterns: "list[str]", start_date: datetime,
                           end_date: datetime):

@@ -1,10 +1,12 @@
 import logging
 
 from datetime import datetime, timedelta
+from newspaper import Article
+
 from ccloaders.news import CCNewsArticleLoader
 
 
-def print_article(article):
+def print_article(article: Article, date_crawled: datetime):
     logging.info(article.title)
 
 
