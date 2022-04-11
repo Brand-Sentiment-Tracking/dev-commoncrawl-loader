@@ -1,7 +1,7 @@
 import logging
 
 from datetime import datetime, timedelta
-from commoncrawl.loaders import CCNewsRecordLoader
+from ccloaders.news import CCNewsArticleLoader
 
 
 def print_article(article):
@@ -11,9 +11,9 @@ def print_article(article):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    end_date = datetime.today()
-    start_date = end_date - timedelta(days=1)
-    valid_urls = ["*"]
+    end_date = datetime.today() - timedelta(days=150)
+    start_date = end_date - timedelta(days=75)
+    valid_urls = ["*business*"]
 
-    loader = CCNewsRecordLoader(print_article)
+    loader = CCNewsArticleLoader(print_article)
     loader.download_articles(valid_urls, start_date, end_date)
