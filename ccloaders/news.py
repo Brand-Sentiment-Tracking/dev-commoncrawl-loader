@@ -6,7 +6,7 @@ import langdetect
 
 import os.path
 
-from typing import Callable
+from typing import Callable, Optional
 
 from datetime import datetime
 from dateutil.rrule import rrule, MONTHLY
@@ -38,7 +38,7 @@ class CCNewsArticleLoader:
     CC_DOMAIN = "https://data.commoncrawl.org"
     CC_NEWS_ROUTE = os.path.join("crawl-data", "CC-NEWS")
 
-    WARC_FILE_RE = re.compile(r"CC-NEWS-(?P<time>\d{14})-(?P<serial>\d{5})")
+    WARC_DATE_RE = re.compile(r"^CC-NEWS-(?P<date>\d{14})-\d{5}\.warc\.gz$")
     CONTENT_RE = re.compile(r"^(?P<mime>[\w\/]+);\s?charset=(?P<charset>.*)$")
 
     SUPPORTED_LANGUAGES = get_available_languages()
@@ -163,7 +163,7 @@ class CCNewsArticleLoader:
         self.__discarded = 0
         self.__errored = 0
 
-    def __load_warc_paths(self, month: int, year: int) -> "list[str]":
+    def get_warc_paths(self, month: int, year: int) -> "list[str]":
         """Returns a list of warc files for a single month/year archive.
 
         Note:
@@ -196,26 +196,32 @@ class CCNewsArticleLoader:
 
         return filenames
 
-    def __extract_date(self, warc_filepath: str) -> datetime:
-        match = self.WARC_FILE_RE.search(warc_filepath)
+    def extract_date(self, warc_filename: str) -> Optional[datetime]:
+        """Get the crawl date and time from a warc filename.
+
+        This is done by matching the warc filename to a regex pattern and
+        parsing the timestamp to a datetime object.
+
+        Args:
+            warc_filepath (str): The basename of the warc filepath. This
+                should have the following structure:
+                    `CC-NEWS-YYYYBBDDHHMMSS-XXXXX.warc.gz`
+
+        Returns:
+            datetime: The date and time when the warc was posted. This is
+                approximately the same date/time as when its records were
+                crawled.
+        """
+        match = self.WARC_DATE_RE.match(warc_filename)
 
         if match is None:
-            logging.debug(f"Ignoring '{warc_filepath}'.")
-            return False
+            logging.debug(f"Could match warc filename {warc_filename}")
+            return None
 
-        time = match.group("time")
-
-        return datetime.strptime(time, "%Y%m%d%H%M%S")
+        return datetime.strptime(match.group("date"), "%Y%m%d%H%M%S")
 
     def __is_within_date(self, warc_filepath: str) -> bool:
         """Checks whether a warc was crawled between the start and end dates.
-
-        This is done by extracting the timetamp from the filename, parsing
-        it to a datetime and comparing it to start_date and end_date.
-
-        Note:
-            If the filepath doesn't match the warc filename regex, the method
-                will return False.
 
         Args:
             warc_filepath (str): The path from CC-NEWS domain to the file.
@@ -227,7 +233,12 @@ class CCNewsArticleLoader:
             bool: True if the warc file was crawled within the start and end
                 dates. False otherwise.
         """
-        crawl_date = self.__extract_date(warc_filepath)
+        warc_filename = os.path.basename(warc_filepath)
+        crawl_date = self.extract_date(warc_filename)
+
+        if crawl_date is None:
+            logging.debug(f"Ignoring '{warc_filepath}'.")
+            return False
 
         return crawl_date >= self.start_date \
             and crawl_date < self.end_date
@@ -263,7 +274,7 @@ class CCNewsArticleLoader:
 
         for d in rrule(MONTHLY, self.start_date, until=self.end_date):
             logging.info(f"Downloading warc paths for {d.strftime('%b %Y')}.")
-            filenames.extend(self.__load_warc_paths(d.month, d.year))
+            filenames.extend(self.get_warc_paths(d.month, d.year))
 
         return self.__filter_warc_paths(filenames)
 
@@ -363,7 +374,7 @@ class CCNewsArticleLoader:
 
             self.extract_article(url, html, language, date_crawled)
 
-    def __load_warc(self, warc_path: str):
+    def __get_warc(self, warc_path: str):
         """Downloads and parses a warc file for article extraction.
 
         Note:
@@ -375,7 +386,7 @@ class CCNewsArticleLoader:
                 including the CommonCrawl domain).
         """
         warc_url = urljoin(self.CC_DOMAIN, warc_path)
-        date_crawled = self.__extract_date(warc_path)
+        date_crawled = self.extract_date(warc_path)
 
         logging.info(f"Downloading '{warc_url}'")
         response = requests.get(warc_url, stream=True)
@@ -407,5 +418,5 @@ class CCNewsArticleLoader:
 
         warc_paths = self.__retrieve_warc_paths()
 
-        for warc in warc_paths:
-            self.__load_warc(warc)
+        for path in warc_paths:
+            self.__get_warc(path)
